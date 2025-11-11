@@ -1,0 +1,76 @@
+currency symbols_letterlike symbols	1
+khmer	1
+hangul compatibility jamo_hangul syllables	1
+box drawing_specials	1
+malayalam_specials	1
+specials_variation selectors	1
+variation selectors	1
+armenian_specials	1
+malayalam	1
+cjk_merged_hiragana_specials	1
+number forms	1
+armenian	1
+ipa extensions	2
+miscellaneous mathematical symbols-a	2
+arabic_merged_spacing modifier letters	2
+braille patterns	2
+halfwidth and fullwidth forms_hiragana	2
+specials_tamil	2
+hebrew_specials	2
+miscellaneous technical	2
+spacing modifier letters	2
+halfwidth and fullwidth forms_katakana	2
+greek_merged_specials	2
+khmer_specials	2
+combining diacritical marks_latin_merged	3
+tamil	3
+private use area	3
+bengali_specials	3
+hiragana_specials	3
+specials_thai	3
+box drawing_katakana	3
+superscripts and subscripts	4
+katakana_specials	4
+katakana_hiragana	4
+enclosed alphanumerics	4
+emoticons	5
+dingbats	5
+currency symbols	5
+bengali	6
+devanagari_specials	6
+arabic_merged_specials	6
+greek_merged_latin_merged	6
+cyrillic_specials	7
+hangul syllables_latin_merged	8
+letterlike symbols	8
+combining diacritical marks	9
+latin_merged_thai	10
+arrows	13
+hangul compatibility jamo	13
+arabic_merged_latin_merged	14
+miscellaneous symbols	15
+block elements	17
+cjk_merged_latin_merged	18
+hebrew	20
+mathematical operators	23
+geometric shapes	25
+box drawing	27
+halfwidth and fullwidth forms_latin_merged	28
+devanagari_latin_merged	31
+hangul syllables_specials	35
+cjk_merged_specials	36
+latin_merged_specials	43
+cyrillic_latin_merged	55
+cjk_merged_halfwidth and fullwidth forms	104
+halfwidth and fullwidth forms	176
+katakana	431
+hiragana	636
+devanagari	981
+specials	1202
+thai	1381
+greek_merged	1385
+hangul syllables	2237
+arabic_merged	3788
+cjk_merged	4239
+cyrillic	6455
+latin_merged	104051
