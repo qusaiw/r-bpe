@@ -117,6 +117,17 @@ class RBPETokenizer(PreTrainedTokenizer):
         self.target_language = target_language
     
     @property
+    def is_fast(self) -> bool:
+        """
+        Returns True because this tokenizer uses a fast Rust backend.
+        
+        Note: HuggingFace's default is_fast property checks for PreTrainedTokenizerFast
+        inheritance, but R-BPE uses its own Rust implementation (rbpe_tokenizers).
+        We override this to accurately reflect that the tokenizer is fast.
+        """
+        return RUST_AVAILABLE
+    
+    @property
     def vocab_size(self) -> int:
         """
         Returns the vocabulary size.
@@ -232,6 +243,13 @@ class RBPETokenizer(PreTrainedTokenizer):
                 verbose=verbose,
             )
         
+        # For single sequences with tensor output, wrap in a list to get 2D tensor
+        if return_tensors is not None:
+            encoded_inputs = {
+                "input_ids": [input_ids],
+                "attention_mask": [attention_mask],
+            }
+        
         # Convert to BatchEncoding
         return BatchEncoding(encoded_inputs, tensor_type=return_tensors)
     
@@ -314,6 +332,16 @@ class RBPETokenizer(PreTrainedTokenizer):
         """
         Decode a sequence of token IDs to a string.
         """
+        # Convert tensor to list if needed
+        if hasattr(token_ids, 'tolist'):
+            token_ids = token_ids.tolist()
+        elif not isinstance(token_ids, list):
+            # Handle single integer or other iterables
+            if isinstance(token_ids, int):
+                token_ids = [token_ids]
+            else:
+                token_ids = list(token_ids)
+        
         # Use advanced decoder for better handling of replacement characters
         use_advanced = kwargs.pop('use_advanced_decoder', True)
         
@@ -376,4 +404,14 @@ class RBPETokenizer(PreTrainedTokenizer):
 # For backward compatibility
 class RBPETokenizerFast(RBPETokenizer):
     """Alias for RBPETokenizer (all R-BPE tokenizers use fast Rust backend)."""
-    pass
+    
+    @property
+    def is_fast(self) -> bool:
+        """
+        Returns True because this tokenizer uses a fast Rust backend.
+        
+        Note: HuggingFace's default is_fast property checks for PreTrainedTokenizerFast
+        inheritance, but R-BPE uses its own Rust implementation (rbpe_tokenizers).
+        We override this to accurately reflect that the tokenizer is fast.
+        """
+        return True

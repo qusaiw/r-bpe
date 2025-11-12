@@ -1,0 +1,16 @@
+{
+  "bos_token": {
+    "content": "<|begin_of_text|>",
+    "single_word": false,
+    "lstrip": false,
+    "rstrip": false,
+    "normalized": false
+  },
+  "eos_token": {
+    "content": "<|eot_id|>",
+    "single_word": false,
+    "lstrip": false,
+    "rstrip": false,
+    "normalized": false
+  }
+}

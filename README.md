@@ -35,6 +35,9 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 # Install Python training components
 pip install -e .
 
+# Install maturin (Rust-Python build tool)
+pip install maturin[patchelf]
+
 # Build Rust runtime (REQUIRED - provides 11x speedup)
 cd rbpe-tokenizers
 maturin develop --release
@@ -218,7 +221,7 @@ trainer.train()
 
 | Task | Command |
 |------|---------|
-| **Install** | `pip install -e . && cd rbpe-tokenizers && maturin develop --release` |
+| **Install** | `pip install -e . && pip install maturin[patchelf] && cd rbpe-tokenizers && maturin develop --release` |
 | **Test** | `python test_full_workflow.py` |
 | **Train** | `rbpe create-tokenizer --config config.yaml --output_dir ./my_tokenizer` |
 | **Load** | `AutoTokenizer.from_pretrained("./my_tokenizer", trust_remote_code=True)` |
@@ -262,7 +265,7 @@ maturin develop --release
 
 **Build fails?**
 ```bash
-pip install maturin
+pip install maturin[patchelf]
 cd rbpe-tokenizers && cargo clean && maturin develop --release
 ```
 

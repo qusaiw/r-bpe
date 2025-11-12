@@ -117,6 +117,17 @@ class RBPETokenizer(PreTrainedTokenizer):
         self.target_language = target_language
     
     @property
+    def is_fast(self) -> bool:
+        """
+        Returns True because this tokenizer uses a fast Rust backend.
+        
+        Note: HuggingFace's default is_fast property checks for PreTrainedTokenizerFast
+        inheritance, but R-BPE uses its own Rust implementation (rbpe_tokenizers).
+        We override this to accurately reflect that the tokenizer is fast.
+        """
+        return RUST_AVAILABLE
+    
+    @property
     def vocab_size(self) -> int:
         """
         Returns the vocabulary size.
@@ -376,4 +387,14 @@ class RBPETokenizer(PreTrainedTokenizer):
 # For backward compatibility
 class RBPETokenizerFast(RBPETokenizer):
     """Alias for RBPETokenizer (all R-BPE tokenizers use fast Rust backend)."""
-    pass
+    
+    @property
+    def is_fast(self) -> bool:
+        """
+        Returns True because this tokenizer uses a fast Rust backend.
+        
+        Note: HuggingFace's default is_fast property checks for PreTrainedTokenizerFast
+        inheritance, but R-BPE uses its own Rust implementation (rbpe_tokenizers).
+        We override this to accurately reflect that the tokenizer is fast.
+        """
+        return True
