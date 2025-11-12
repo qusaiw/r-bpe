@@ -227,8 +227,28 @@ R-BPE uses the following configuration parameters:
 
 ## 🏗️ Architecture
 
+### Two-Phase Design
+
+**Phase 1: Training (Python)**
+```
+Python Training Pipeline
+    ↓
+TokenClassifier → Identify reusable tokens by language
+    ↓
+DataCleaner → Remove non-target language text
+    ↓
+BPETokenizerTrainer → Train new tokenizer on cleaned data
+    ↓
+MappingTokenizer → Create ID mappings (new↔old)
+    ↓
+Save tokenizer files + metadata
+```
+
+**Phase 2: Runtime (Rust)**
 ```
 Input Text
+    ↓
+[Rust Implementation - High Performance]
     ↓
 Normalizer (optional) → Normalize Unicode
     ↓
@@ -236,29 +256,48 @@ PreTokenizer → Split by language
     ↓
 Language Router → Arabic vs Others
     ↓
-├─ Arabic → New Tokenizer → Map IDs
-└─ Others → Old Tokenizer
+├─ Arabic → New Tokenizer → Map IDs to old vocab space
+└─ Others → Old Tokenizer → Direct tokenization
     ↓
 Token IDs (in old vocabulary space)
 ```
 
-**Process:**
-1. Classify vocabulary tokens by language via `TokenClassifier`
-2. Clean training data using `DataCleaner`
-3. Train new BPE tokenizer with `BPETokenizerTrainer`
-4. Create mappings between original and new tokenizer with `MappingTokenizer`
-5. Return final `RBPETokenizer` adapted to target language
+### Directory Structure
 
-**Required Directory Structure:**
+After training, the tokenizer is saved with this structure:
 ```
 your_tokenizer/
-├── new_tokenizer/tokenizer.json
-├── old_tokenizer/tokenizer.json
-└── metadata/
-    ├── new_to_old_map.json
-    ├── old_to_new_map.json
-    └── replacement_character_map.json  # optional
+├── new_tokenizer/
+│   ├── tokenizer.json          # Target language tokenizer
+│   └── special_tokens_map.json
+├── old_tokenizer/
+│   ├── tokenizer.json          # Base model tokenizer
+│   └── special_tokens_map.json
+├── metadata/
+│   ├── new_to_old_map.json     # ID mapping: new → old
+│   ├── old_to_new_map.json     # ID mapping: old → new
+│   ├── replacement_character_map.json  # Character replacements
+│   ├── token_id_language_map.json      # Token language classifications
+│   └── vocabulary_languages.txt        # Language statistics
+├── tokenization_rbpe.py        # HuggingFace wrapper (auto-copied)
+├── tokenizer_config.json       # HuggingFace config
+└── special_tokens_map.json     # Special tokens
 ```
+
+### Key Components
+
+**Training (Python - `src/rbpe/`)**
+- `rbpe_tokenizer.py` - Main training factory
+- `token_classifier.py` - Classifies tokens by language
+- `data_cleaner.py` - Cleans training data
+- `bpe_tokenizer_trainer.py` - Trains new BPE model
+- `mapping_tokenizer.py` - Creates ID mappings (training-time only)
+
+**Runtime (Rust - `rbpe-tokenizers/`)**
+- Complete Rust implementation with Python bindings
+- 11x faster than pure Python
+- Handles all tokenization, routing, and ID mapping
+- Integrates seamlessly with HuggingFace via `tokenization_rbpe.py`
 
 ## Specifying Language Scripts
 
