@@ -1,80 +1,211 @@
 # R-BPE: Improving BPE-Tokenizers with Token Reuse
 
-This repository accompanies the paper introducing R-BPE, a lightweight framework for adapting existing Byte-Pair Encoding (BPE) tokenizers to better support a specified target language. The method is demonstrated using Arabic as the target language. R-BPE reuses tokens from user-excluded languages and creates ID-based maps to resolve the new tokens of the chosen language. It is compatible with HuggingFace interfaces and thereby readily applicable to a wide range of existing models.
+A lightweight framework for adapting existing Byte-Pair Encoding (BPE) tokenizers to better support a target language. R-BPE reuses tokens from user-excluded languages and creates ID-based maps to resolve new tokens. Fully compatible with HuggingFace ecosystem.
 
-## 🚀 Rust Implementation with AutoTokenizer Support
+---
 
-A **high-performance Rust implementation** is now available with full **HuggingFace AutoTokenizer compatibility**:
+## 📦 Installation
 
-- **10-100x faster** than pure Python
-- **Full HuggingFace parity**: Works with AutoTokenizer, Trainer, pipelines, datasets
-- **Complete R-BPE features**: Dual tokenizers, language routing, vocabulary mapping
-- **Zero compromises**: Rust speed + HF ecosystem + R-BPE intelligence
-
-### Quick Start (Standard HuggingFace Way)
-
+### Prerequisites
 ```bash
-# Build and install Rust tokenizer (one-time setup)
+# Python 3.7+
+python --version
+
+# Rust (for high-performance tokenizer)
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+### Install
+```bash
+# Clone and setup
+git clone <repository-url>
+cd r-bpe
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install Python package
+pip install -e .
+
+# Build Rust tokenizer (11x faster, required)
 cd rbpe-tokenizers
 maturin develop --release
 cd ..
+```
 
-# Use like any HuggingFace tokenizer
+Verify:
+```bash
+python -c "from transformers import AutoTokenizer; print('✓ Ready')"
+```
+
+---
+
+## 🎯 Quick Start
+
+### Training a Tokenizer
+
+**CLI (Recommended):**
+```bash
+rbpe create-tokenizer \
+  --model_id meta-llama/Llama-3.1-8B \
+  --training_data_dir ./data/arabic_corpus \
+  --output_dir ./my_rbpe_tokenizer \
+  --target_language_scripts arabic \
+  --preserved_languages_scripts latin greek \
+  --hf_token YOUR_HUGGINGFACE_TOKEN
+```
+
+**Python API:**
+```python
+from rbpe import RBPETokenizer
+
+# Create and train
+tokenizer_factory = RBPETokenizer(
+    model_id='meta-llama/Llama-3.1-8B',
+    training_data_dir='./data/arabic_corpus',
+    target_language_scripts=['arabic'],
+    preserved_languages_scripts=['latin', 'greek'],
+    hf_token='YOUR_HUGGINGFACE_TOKEN'
+)
+
+tokenizer = tokenizer_factory.prepare()
+tokenizer.save_pretrained('./my_rbpe_tokenizer')
+```
+
+**Config File:**
+```yaml
+# config.yaml
+model_id: meta-llama/Llama-3.1-8B
+training_data_dir: ./data/arabic_corpus
+output_dir: ./my_rbpe_tokenizer
+target_language_scripts: [arabic]
+preserved_languages_scripts: [latin, greek]
+hf_token: YOUR_HUGGINGFACE_TOKEN
+```
+```bash
+rbpe create-tokenizer --config config.yaml
+```
+
+### Using the Tokenizer
+
+**Method 1: AutoTokenizer (HuggingFace Compatible)**
+```python
 from transformers import AutoTokenizer
 
-tokenizer = AutoTokenizer.from_pretrained("rbpe_tokenizer", trust_remote_code=True)
+tokenizer = AutoTokenizer.from_pretrained(
+    "./my_rbpe_tokenizer",
+    trust_remote_code=True
+)
+
+# Encode/Decode
 ids = tokenizer.encode("Hello مرحبا World")
 text = tokenizer.decode(ids)
 
-# Works with datasets, Trainer, pipelines, etc.
-from datasets import Dataset
-dataset.map(lambda x: tokenizer(x["text"]), batched=True)
+# Batch processing
+batch = tokenizer(["Hello", "مرحبا"], padding=True, return_tensors="pt")
 ```
 
-### Alternative: Direct Rust API
-
+**Method 2: Direct Rust API (Maximum Performance)**
 ```python
 import rbpe_tokenizers
 
-tokenizer = rbpe_tokenizers.RBPETokenizer.from_pretrained("rbpe_tokenizer")
-ids = tokenizer.encode("Hello مرحبا World")
-text = tokenizer.decode(ids)
+tokenizer = rbpe_tokenizers.RBPETokenizer.from_pretrained("./my_rbpe_tokenizer")
+ids = tokenizer.encode("Hello مرحبا", add_special_tokens=False)
+text = tokenizer.decode(ids, skip_special_tokens=True)
+batch_ids = tokenizer.encode_batch(["Hello", "مرحبا", "World"])
 ```
 
-**Documentation:**
-- [AutoTokenizer Integration](SESSION_6_SUMMARY.md) - Full HuggingFace compatibility
-- [Python API Guide](rbpe-tokenizers/PYTHON_API.md) - Complete API reference
-- [Rust Quick Start](rbpe-tokenizers/QUICKSTART.md) - Using from Rust
-- [Migration Guide](PYTHON_MIGRATION_GUIDE.md) - Moving from Python
+---
 
-**Performance:** 367 examples/sec with datasets, 4.6ms for 100 texts (Rust backend)
+## 📊 Performance
 
-## Overview
-The `RBPETokenizer` orchestrates the entire process of:
-1. Classifying vocabulary tokens languages via `TokenClassifier`.
-2. Cleaning training data using `DataCleaner`.
-3. Training a new BPE tokenizer with `BPETokenizerTrainer`.
-4. Creating mappings between the original and new tokenizer with `MappingTokenizer`.
-5. Returning a final `RBPETokenizer` adapted to the target language.
+| Metric | Value |
+|--------|-------|
+| **Speed** | 11x faster than Python |
+| **Throughput** | 66,000 texts/sec |
+| **Accuracy** | 100% parity with Python |
+| **Build time** | ~7 seconds |
 
-## Prerequisites
+---
 
-1. Create and activate a virtual environment:
+## 🔧 Common Tasks
+
+### With HuggingFace Datasets
+```python
+from datasets import load_dataset
+
+dataset = load_dataset("your-dataset")
+tokenized = dataset.map(
+    lambda x: tokenizer(x["text"], truncation=True, max_length=512),
+    batched=True
+)
+```
+
+### With HuggingFace Trainer
+```python
+from transformers import AutoModelForCausalLM, Trainer, TrainingArguments
+
+model = AutoModelForCausalLM.from_pretrained("your-model")
+
+training_args = TrainingArguments(
+    output_dir="./results",
+    num_train_epochs=3,
+    per_device_train_batch_size=4,
+)
+
+trainer = Trainer(
+    model=model,
+    args=training_args,
+    train_dataset=tokenized_dataset["train"],
+)
+
+trainer.train()
+```
+
+---
+
+## 📝 Quick Reference
+
+| Task | Command |
+|------|---------|
+| **Install** | `pip install -e . && cd rbpe-tokenizers && maturin develop --release` |
+| **Train** | `rbpe create-tokenizer --config config.yaml` |
+| **Load** | `AutoTokenizer.from_pretrained("path", trust_remote_code=True)` |
+| **Encode** | `tokenizer.encode("text")` |
+| **Decode** | `tokenizer.decode(ids)` |
+| **Batch** | `tokenizer(texts, padding=True, return_tensors="pt")` |
+
+---
+
+## 🛠️ Troubleshooting
+
+**Build fails?**
 ```bash
-python -m venv venv
-source venv/bin/activate
+pip install maturin
+cd rbpe-tokenizers && cargo clean && maturin develop --release
 ```
 
-2. Install the package:
+**Import error?**
 ```bash
-pip install .
+pip install transformers datasets torch
 ```
 
-## Creating an R-BPE Tokenizer
+**"trust_remote_code required"**
+```python
+AutoTokenizer.from_pretrained("path", trust_remote_code=True)
+```
 
-You can create an R-BPE tokenizer either through the command-line interface (CLI) or programmaticaly through the Python API.
+---
 
-#### Configuration Parameters
+## 📚 Documentation
+
+- [RECIPE.md](RECIPE.md) - Detailed usage guide
+- [RUST_QUICK_REFERENCE.md](RUST_QUICK_REFERENCE.md) - Rust API quick reference
+- [rbpe-tokenizers/PYTHON_API.md](rbpe-tokenizers/PYTHON_API.md) - Complete Python API
+- [SESSION_6_SUMMARY.md](SESSION_6_SUMMARY.md) - Full AutoTokenizer integration docs
+
+---
+
+## ⚙️ Configuration Parameters
 
 R-BPE uses the following configuration parameters:
 
@@ -92,60 +223,41 @@ R-BPE uses the following configuration parameters:
 | additional_special_tokens | List of additional special tokens the _new_ tokenizer will have. | Optional | None |
 | apply_rbpe_arabic_norm | Whether to apply the R-BPE Arabic normalization during encoding or not. | optional | True |
 
-#### Using the CLI
+---
 
-You have to supply `output_dir` which is the path where the created `RBPETokenizer` should be saved.
+## 🏗️ Architecture
 
-```bash
-rbpe create-tokenizer --config path/to/config.yaml --output_dir path/to/tokenizer_output_dir
 ```
-or 
-
-```bash
-rbpe create-tokenizer --output_dir path/to/tokenizer_output_dir --model_id meta-llama/Llama-3.1-8B --output_dir ./rbpe_tokenizer --training_data_dir ./data --hf_token YOUR_TOKEN
-```
-
-#### Using the Python API
-
-```python
-from rbpe import RBPETokenizer
-
-# From a YAML config file
-tokenizer_factory = RBPETokenizer.from_config('path/to/config.yaml')
-
-# Or with explicit parameters
-tokenizer_factory = RBPETokenizer(
-    model_id='meta-llama/Llama-3.1-8B',
-    training_data_dir='./data',
-    cleaned_data_dir='./data_cleaned',
-    target_language_scripts=['arabic'],
-    preserved_languages_scripts=['latin', 'greek'],
-)
-
-# Prepare the tokenizer
-tokenizer = tokenizer_factory.prepare()
-
-# You can directly use the tokenizer now
-
-# Save the prepared R-BPE tokenizer for future use
-tokenizer.save_pretrained('./rbpe_llama3_8b_tokenizer')
+Input Text
+    ↓
+Normalizer (optional) → Normalize Unicode
+    ↓
+PreTokenizer → Split by language
+    ↓
+Language Router → Arabic vs Others
+    ↓
+├─ Arabic → New Tokenizer → Map IDs
+└─ Others → Old Tokenizer
+    ↓
+Token IDs (in old vocabulary space)
 ```
 
-## Using an R-BPE tokenizer
+**Process:**
+1. Classify vocabulary tokens by language via `TokenClassifier`
+2. Clean training data using `DataCleaner`
+3. Train new BPE tokenizer with `BPETokenizerTrainer`
+4. Create mappings between original and new tokenizer with `MappingTokenizer`
+5. Return final `RBPETokenizer` adapted to target language
 
-Once you have created your R-BPE tokenizer, you can use it the same way you use any HuggingFace tokenizer:
-
-```python
-from rbpe import RBPETokenizer
-
-tokenizer = RBPETokenizer.from_pretrained('./rbpe_llama3_8b_tokenizer')
-
-text = 'مرحبا'
-encoded = tokenizer(text)
-decoded = tokenizer.decode(encoded['input_ids'])
-
-print('Encoded:', encoded)
-print('Decoded:', decoded)
+**Required Directory Structure:**
+```
+your_tokenizer/
+├── new_tokenizer/tokenizer.json
+├── old_tokenizer/tokenizer.json
+└── metadata/
+    ├── new_to_old_map.json
+    ├── old_to_new_map.json
+    └── replacement_character_map.json  # optional
 ```
 
 ## Specifying Language Scripts
