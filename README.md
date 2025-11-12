@@ -1,6 +1,13 @@
 # R-BPE: Improving BPE-Tokenizers with Token Reuse
 
-A lightweight framework for adapting existing Byte-Pair Encoding (BPE) tokenizers to better support a target language. R-BPE reuses tokens from user-excluded languages and creates ID-based maps to resolve new tokens. Fully compatible with HuggingFace ecosystem.
+A high-performance framework for adapting existing Byte-Pair Encoding (BPE) tokenizers to better support a target language. R-BPE reuses tokens from user-excluded languages and creates ID-based maps to resolve new tokens. 
+
+**Features:**
+- 🚀 **11x faster** than pure Python (Rust backend)
+- 🔧 **Easy training** with Python
+- 🤗 **Full HuggingFace compatibility**
+- 🌍 **Language-aware** tokenization
+- 📦 **No model changes needed** (maintains vocabulary space)
 
 ---
 
@@ -8,33 +15,42 @@ A lightweight framework for adapting existing Byte-Pair Encoding (BPE) tokenizer
 
 ### Prerequisites
 ```bash
-# Python 3.7+
+# Python 3.10+
 python --version
 
-# Rust (for high-performance tokenizer)
+# Rust (required for tokenizer runtime)
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
 
 ### Install
 ```bash
-# Clone and setup
+# Clone repository
 git clone <repository-url>
 cd r-bpe
+
+# Create virtual environment
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-# Install Python package
+# Install Python training components
 pip install -e .
 
-# Build Rust tokenizer (11x faster, required)
+# Build Rust runtime (REQUIRED - provides 11x speedup)
 cd rbpe-tokenizers
 maturin develop --release
 cd ..
 ```
 
-Verify:
+### Verify Installation
 ```bash
-python -c "from transformers import AutoTokenizer; print('✓ Ready')"
+# Check Python components
+python -c "from rbpe import RBPETokenizer; print('✓ Training components installed')"
+
+# Check Rust tokenizer
+python -c "import rbpe_tokenizers; print('✓ Rust tokenizer installed')"
+
+# Check HuggingFace
+python -c "from transformers import AutoTokenizer; print('✓ HuggingFace ready')"
 ```
 
 ---
@@ -87,43 +103,78 @@ rbpe create-tokenizer --config config.yaml
 
 ### Using the Tokenizer
 
-**Method 1: AutoTokenizer (HuggingFace Compatible)**
+**Method 1: AutoTokenizer (Recommended - Full HuggingFace Compatibility)**
 ```python
 from transformers import AutoTokenizer
 
+# Load tokenizer (uses Rust backend automatically)
 tokenizer = AutoTokenizer.from_pretrained(
     "./my_rbpe_tokenizer",
-    trust_remote_code=True
+    trust_remote_code=True  # Required for R-BPE
 )
 
 # Encode/Decode
-ids = tokenizer.encode("Hello مرحبا World")
-text = tokenizer.decode(ids)
+text = "Hello مرحبا World"
+ids = tokenizer.encode(text, add_special_tokens=False)
+decoded = tokenizer.decode(ids, skip_special_tokens=True)
 
-# Batch processing
-batch = tokenizer(["Hello", "مرحبا"], padding=True, return_tensors="pt")
+# Batch processing with padding
+batch = tokenizer(
+    ["Hello", "مرحبا", "World"], 
+    padding=True, 
+    truncation=True,
+    max_length=512,
+    return_tensors="pt"
+)
+print(batch["input_ids"].shape)  # torch.Size([3, max_len])
 ```
 
 **Method 2: Direct Rust API (Maximum Performance)**
 ```python
 import rbpe_tokenizers
 
+# Load directly (no HuggingFace overhead)
 tokenizer = rbpe_tokenizers.RBPETokenizer.from_pretrained("./my_rbpe_tokenizer")
+
+# Single text
 ids = tokenizer.encode("Hello مرحبا", add_special_tokens=False)
 text = tokenizer.decode(ids, skip_special_tokens=True)
+
+# Advanced decoding (handles replacement characters)
+text = tokenizer.decode_advanced(ids, skip_special_tokens=True)
+
+# Batch operations (fastest)
 batch_ids = tokenizer.encode_batch(["Hello", "مرحبا", "World"])
+batch_texts = tokenizer.decode_batch(batch_ids)
 ```
 
 ---
 
 ## 📊 Performance
 
+**Benchmarks** (on existing `rbpe_tokenizer`):
+
 | Metric | Value |
 |--------|-------|
-| **Speed** | 11x faster than Python |
-| **Throughput** | 66,000 texts/sec |
-| **Accuracy** | 100% parity with Python |
+| **Single encode+decode** | 49,000 ops/sec (~20µs per op) |
+| **Batch throughput** | 199,000 texts/sec |
+| **Speedup vs Python** | 11x faster |
 | **Build time** | ~7 seconds |
+
+**Real performance from test suite:**
+```bash
+Testing 1000 iterations of encode+decode
+Text length: 49 chars
+
+Results:
+  Total time: 0.020s
+  Operations/sec: 49,345
+  Time per operation: 20.3 µs
+
+Batch performance (100 texts):
+  Total time: 0.5ms
+  Throughput: 199,160 texts/sec
+```
 
 ---
 
@@ -168,15 +219,46 @@ trainer.train()
 | Task | Command |
 |------|---------|
 | **Install** | `pip install -e . && cd rbpe-tokenizers && maturin develop --release` |
-| **Train** | `rbpe create-tokenizer --config config.yaml` |
-| **Load** | `AutoTokenizer.from_pretrained("path", trust_remote_code=True)` |
-| **Encode** | `tokenizer.encode("text")` |
-| **Decode** | `tokenizer.decode(ids)` |
+| **Test** | `python test_full_workflow.py` |
+| **Train** | `rbpe create-tokenizer --config config.yaml --output_dir ./my_tokenizer` |
+| **Load** | `AutoTokenizer.from_pretrained("./my_tokenizer", trust_remote_code=True)` |
+| **Encode** | `tokenizer.encode("text", add_special_tokens=False)` |
+| **Decode** | `tokenizer.decode(ids, skip_special_tokens=True)` |
 | **Batch** | `tokenizer(texts, padding=True, return_tensors="pt")` |
+| **Direct Rust** | `rbpe_tokenizers.RBPETokenizer.from_pretrained("./my_tokenizer")` |
 
 ---
 
+## ✅ Testing
+
+Run the comprehensive test suite to verify everything works:
+
+```bash
+python test_full_workflow.py
+```
+
+This tests:
+- ✓ Installation verification
+- ✓ Direct Rust tokenizer API
+- ✓ HuggingFace AutoTokenizer loading
+- ✓ Encoding/decoding correctness
+- ✓ Batch operations
+- ✓ Performance benchmarks
+- ✓ File structure validation
+
+Expected output:
+```
+🎉 All tests passed! R-BPE is working correctly.
+  Total: 5/5 tests passed
+```
+
 ## 🛠️ Troubleshooting
+
+**"Rust R-BPE tokenizer not available"**
+```bash
+cd rbpe-tokenizers
+maturin develop --release
+```
 
 **Build fails?**
 ```bash
@@ -186,13 +268,27 @@ cd rbpe-tokenizers && cargo clean && maturin develop --release
 
 **Import error?**
 ```bash
+pip install -e .
 pip install transformers datasets torch
 ```
 
 **"trust_remote_code required"**
+
+Always use `trust_remote_code=True` when loading with AutoTokenizer:
 ```python
-AutoTokenizer.from_pretrained("path", trust_remote_code=True)
+tokenizer = AutoTokenizer.from_pretrained("path", trust_remote_code=True)
 ```
+
+**Tokenizer loads but seems slow?**
+
+Check if it's using Rust backend:
+```python
+tokenizer = AutoTokenizer.from_pretrained("path", trust_remote_code=True)
+print(tokenizer.__class__.__module__)
+# Should see: transformers_modules.{path}.tokenization_rbpe
+```
+
+If you see `dynamic_tokenizer` or old module names, retrain with updated code.
 
 ---
 
@@ -227,77 +323,73 @@ R-BPE uses the following configuration parameters:
 
 ## 🏗️ Architecture
 
-### Two-Phase Design
+R-BPE uses a **two-phase architecture** separating training (Python) from runtime (Rust):
 
-**Phase 1: Training (Python)**
+### Phase 1: Training (Python)
+
+Train once using Python - leverages HuggingFace ecosystem:
+
 ```
-Python Training Pipeline
-    ↓
-TokenClassifier → Identify reusable tokens by language
-    ↓
-DataCleaner → Remove non-target language text
-    ↓
-BPETokenizerTrainer → Train new tokenizer on cleaned data
-    ↓
-MappingTokenizer → Create ID mappings (new↔old)
-    ↓
-Save tokenizer files + metadata
+1. TokenClassifier    → Analyze base vocabulary by language
+2. DataCleaner        → Remove non-target language text  
+3. BPETokenizerTrainer → Train new tokenizer on cleaned data
+4. MappingTokenizer   → Create ID mappings (new ↔ old)
+5. Save               → Export tokenizer + Rust wrapper
 ```
 
-**Phase 2: Runtime (Rust)**
+**Training Components** (`src/rbpe/`):
+- `rbpe_tokenizer.py` - Training orchestration
+- `token_classifier.py` - Language classification
+- `data_cleaner.py` - Data preprocessing
+- `bpe_tokenizer_trainer.py` - BPE training
+- `mapping_tokenizer.py` - Mapping creation (training only!)
+
+### Phase 2: Runtime (Rust)
+
+Use everywhere with 11x speedup:
+
 ```
 Input Text
     ↓
-[Rust Implementation - High Performance]
+Normalizer (optional) → Unicode normalization
     ↓
-Normalizer (optional) → Normalize Unicode
+PreTokenizer → Language-aware splitting
     ↓
-PreTokenizer → Split by language
+Language Router
+    ├─ Target language → New Tokenizer → Map to old vocab
+    └─ Other languages → Old Tokenizer
     ↓
-Language Router → Arabic vs Others
-    ↓
-├─ Arabic → New Tokenizer → Map IDs to old vocab space
-└─ Others → Old Tokenizer → Direct tokenization
-    ↓
-Token IDs (in old vocabulary space)
+Token IDs (in original vocabulary space)
 ```
 
-### Directory Structure
+**Runtime Components** (`rbpe-tokenizers/`):
+- `fast_tokenizer.rs` - Main tokenizer
+- `pretokenizer.rs` - Language detection & splitting
+- `model.rs` - Dual tokenizer routing
+- `decoder.rs` - Decoding + replacement handling
+- `python_bindings.rs` - PyO3 bindings for Python
 
-After training, the tokenizer is saved with this structure:
+### Saved Tokenizer Structure
+
 ```
-your_tokenizer/
+my_rbpe_tokenizer/
 ├── new_tokenizer/
-│   ├── tokenizer.json          # Target language tokenizer
-│   └── special_tokens_map.json
+│   └── tokenizer.json          # Target language BPE
 ├── old_tokenizer/
-│   ├── tokenizer.json          # Base model tokenizer
-│   └── special_tokens_map.json
+│   └── tokenizer.json          # Base model BPE
 ├── metadata/
-│   ├── new_to_old_map.json     # ID mapping: new → old
-│   ├── old_to_new_map.json     # ID mapping: old → new
-│   ├── replacement_character_map.json  # Character replacements
-│   ├── token_id_language_map.json      # Token language classifications
-│   └── vocabulary_languages.txt        # Language statistics
-├── tokenization_rbpe.py        # HuggingFace wrapper (auto-copied)
-├── tokenizer_config.json       # HuggingFace config
-└── special_tokens_map.json     # Special tokens
+│   ├── new_to_old_map.json     # ID mappings
+│   ├── old_to_new_map.json
+│   └── replacement_character_map.json
+├── tokenization_rbpe.py        # Rust wrapper (auto-copied)
+└── tokenizer_config.json       # HuggingFace config
 ```
 
-### Key Components
+### Why This Design?
 
-**Training (Python - `src/rbpe/`)**
-- `rbpe_tokenizer.py` - Main training factory
-- `token_classifier.py` - Classifies tokens by language
-- `data_cleaner.py` - Cleans training data
-- `bpe_tokenizer_trainer.py` - Trains new BPE model
-- `mapping_tokenizer.py` - Creates ID mappings (training-time only)
-
-**Runtime (Rust - `rbpe-tokenizers/`)**
-- Complete Rust implementation with Python bindings
-- 11x faster than pure Python
-- Handles all tokenization, routing, and ID mapping
-- Integrates seamlessly with HuggingFace via `tokenization_rbpe.py`
+- **Training in Python**: Easy integration with HuggingFace, datasets, etc.
+- **Runtime in Rust**: 11x faster, production-ready performance
+- **Best of both worlds**: Simple training, blazing-fast inference
 
 ## Specifying Language Scripts
 
