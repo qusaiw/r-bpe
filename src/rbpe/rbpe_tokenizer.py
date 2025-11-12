@@ -269,16 +269,16 @@ class RBPETokenizer:
                     for language, id_count in sorted_langs:
                         f.write(f"{language}\t{id_count}\n")
                 
-                # Copy tokenization_rbpe.py to enable AutoTokenizer.from_pretrained()
-                tokenization_file = Path(__file__).parent / "tokenization_rbpe.py"
+                # Copy tokenization.py to enable AutoTokenizer.from_pretrained()
+                tokenization_file = Path(__file__).parent / "tokenization.py"
                 if tokenization_file.exists():
                     import shutil
-                    shutil.copy2(tokenization_file, os.path.join(save_directory, "tokenization_rbpe.py"))
+                    shutil.copy2(tokenization_file, os.path.join(save_directory, "tokenization.py"))
                 
                 # Save config compatible with AutoTokenizer
                 config = {
                     "auto_map": {
-                        "AutoTokenizer": ["tokenization_rbpe.RBPETokenizer", None]
+                        "AutoTokenizer": ["tokenization.RBPETokenizer", None]
                     },
                     "model_type": "rbpe",
                     "tokenizer_class": "RBPETokenizer",

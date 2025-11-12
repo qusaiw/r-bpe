@@ -225,7 +225,7 @@ def test_tokenizer_structure():
         "old_tokenizer/tokenizer.json",
         "metadata/new_to_old_map.json",
         "metadata/old_to_new_map.json",
-        "tokenization_rbpe.py",
+        "tokenization.py",
         "tokenizer_config.json",
         "special_tokens_map.json",
     ]
@@ -240,19 +240,19 @@ def test_tokenizer_structure():
         if not exists:
             all_exist = False
     
-    # Check tokenization_rbpe.py content
-    tokenization_file = tokenizer_path / "tokenization_rbpe.py"
+    # Check tokenization.py content
+    tokenization_file = tokenizer_path / "tokenization.py"
     if tokenization_file.exists():
         content = tokenization_file.read_text()
         has_rust_import = "import rbpe_tokenizers" in content
         has_rust_class = "RBPETokenizer" in content
         
-        print(f"\n  Checking tokenization_rbpe.py:")
+        print(f"\n  Checking tokenization.py:")
         print(f"    {'✓' if has_rust_import else '✗'} Has Rust import")
         print(f"    {'✓' if has_rust_class else '✗'} Has RBPETokenizer class")
         
         if not (has_rust_import and has_rust_class):
-            print(f"    ⚠ Warning: tokenization_rbpe.py may be from old format")
+            print(f"    ⚠ Warning: tokenization.py may be from old format")
             all_exist = False
     
     return all_exist

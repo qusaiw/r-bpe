@@ -384,10 +384,10 @@ class RBPETokenizer(PreTrainedTokenizer):
                         shutil.rmtree(dst)
                     shutil.copytree(src, dst)
             
-            # Copy tokenization_rbpe.py if it exists
-            tokenization_file = source_dir / "tokenization_rbpe.py"
+            # Copy tokenization.py if it exists
+            tokenization_file = source_dir / "tokenization.py"
             if tokenization_file.exists():
-                shutil.copy2(tokenization_file, save_dir / "tokenization_rbpe.py")
+                shutil.copy2(tokenization_file, save_dir / "tokenization.py")
             
             return tuple()
         else:

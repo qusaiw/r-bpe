@@ -129,7 +129,7 @@ def build_rbpe_tokenizer(base_model: str, output_dir: str):
     config = {
         "tokenizer_class": "RBPETokenizer",
         "auto_map": {
-            "AutoTokenizer": ["tokenization_rbpe.RBPETokenizer", None]
+            "AutoTokenizer": ["tokenization.RBPETokenizer", None]
         },
         "model_max_length": base_tokenizer.model_max_length,
         **special_tokens,
@@ -146,16 +146,16 @@ def build_rbpe_tokenizer(base_model: str, output_dir: str):
     print(f"✓ Created tokenizer_config.json")
     print()
     
-    # Step 7: Copy tokenization_rbpe.py
+    # Step 7: Copy tokenization.py
     print("Step 7: Copying tokenization implementation")
     print("-" * 80)
     
-    source_file = Path("rbpe_tokenizer/tokenization_rbpe.py")
+    source_file = Path("rbpe_tokenizer/tokenization.py")
     if source_file.exists():
-        shutil.copy2(source_file, output_path / "tokenization_rbpe.py")
-        print(f"✓ Copied tokenization_rbpe.py")
+        shutil.copy2(source_file, output_path / "tokenization.py")
+        print(f"✓ Copied tokenization.py")
     else:
-        print(f"✗ Warning: tokenization_rbpe.py not found at {source_file}")
+        print(f"✗ Warning: tokenization.py not found at {source_file}")
     print()
     
     # Step 8: Create special_tokens_map.json
@@ -189,7 +189,7 @@ def build_rbpe_tokenizer(base_model: str, output_dir: str):
     print()
     print("Directory structure:")
     print(f"  {output_dir}/")
-    print(f"    ├── tokenization_rbpe.py")
+    print(f"    ├── tokenization.py")
     print(f"    ├── tokenizer_config.json")
     print(f"    ├── special_tokens_map.json")
     print(f"    ├── new_tokenizer/")
