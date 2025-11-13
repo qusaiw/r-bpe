@@ -13,7 +13,6 @@ from .token_classifier import TokenClassifier
 from .data_cleaner import DataCleaner
 from .bpe_tokenizer_trainer import BPETokenizerTrainer
 from .mapping_tokenizer import MappingTokenizer
-from .dynamic_tokenizer import create_dynamic_tokenizer
 import os
 import json
 import yaml
@@ -29,7 +28,7 @@ logger = setup_logger('BPE')
 class RBPETokenizer:
     """Factory class to create and prepare a custom R-BPE tokenizer with minimal configuration requirements."""
     def __init__(self, model_id, training_data_dir, clean_data=True, cleaned_data_dir=None,
-                         hf_token=None, min_reusable_count=20000, target_language_scripts=['arabic'], preserved_languages_scripts=['latin', 'greek'],
+                         hf_token=None, min_reusable_count=50000, target_language_scripts=['arabic'], preserved_languages_scripts=['latin', 'greek'],
                          special_tokens={}, additional_special_tokens=[], apply_rbpe_arabic_norm=True):
         """Initialize an R-BPE tokenizer from parameters.
         
@@ -216,55 +215,158 @@ class RBPETokenizer:
         
         logger.info("Mapping creation completed successfully.")
         
-        # Prepare config for dynamic tokenizer
-        dynamic_tokenizer_config = {
-            'model_id': self.model_id,
-            'old_to_new_map': self.mapping_tokenizer.old_to_new_map,
-            'new_to_old_map': self.mapping_tokenizer.new_to_old_map,
-            'replacement_character_map': self.mapping_tokenizer.replacement_character_map,
-            'reusable_languages': list(self.reusable_languages_dict.keys()),
-            'target_language_scripts_ranges': self.target_language_scripts_ranges,
-            'token_id_language_map': self.token_classifier.classified_ids_with_ranges,
-            'token_text_language_map': self.token_classifier.classified_tokens_with_ranges,
-            'vocabulary_languages': self.token_classifier.all_languages_data
-        }
-
-        dynamic_tokenizer_config.update(self.special_tokens)
+        # Create a simple wrapper that knows how to save the tokenizer in the right format
+        logger.info("Creating R-BPE tokenizer wrapper for saving...")
         
-        # Dynamically create the final R-BPE tokenizer based on the original tokenizer's HuggingFace class
-        logger.info("Creating final custom tokenizer...")
-        base_tokenizer_class = AutoTokenizer.from_pretrained(self.model_id).__class__
-        dynamic_tokenizer_class = create_dynamic_tokenizer(base_tokenizer_class, self.mapping_tokenizer, dynamic_tokenizer_config)
+        class RBPETokenizerSaver:
+            """Simple wrapper that saves tokenizer files in format compatible with Rust backend."""
+            def __init__(self, factory):
+                self.factory = factory
+                self.old_tokenizer = factory.old_tokenizer
+                self.new_tokenizer = factory.new_tokenizer
+                self.mapping_tokenizer = factory.mapping_tokenizer
+                self.token_classifier = factory.token_classifier
+                self.reusable_languages_dict = factory.reusable_languages_dict
+                self.target_language_scripts_ranges = factory.target_language_scripts_ranges
+                self.special_tokens = factory.special_tokens
+                self.model_id = factory.model_id
+            
+            def save_pretrained(self, save_directory: str):
+                """Save tokenizer in format compatible with Rust backend and AutoTokenizer."""
+                os.makedirs(save_directory, exist_ok=True)
+                
+                # Save new and old tokenizers
+                new_tok_dir = os.path.join(save_directory, "new_tokenizer")
+                old_tok_dir = os.path.join(save_directory, "old_tokenizer")
+                os.makedirs(new_tok_dir, exist_ok=True)
+                os.makedirs(old_tok_dir, exist_ok=True)
+                
+                self.new_tokenizer.save_pretrained(new_tok_dir)
+                self.old_tokenizer.save_pretrained(old_tok_dir)
+                
+                # Save metadata files
+                meta_dir = os.path.join(save_directory, "metadata")
+                os.makedirs(meta_dir, exist_ok=True)
+                
+                with open(os.path.join(meta_dir, "new_to_old_map.json"), "w") as f:
+                    json.dump({str(k): v for k, v in self.mapping_tokenizer.new_to_old_map.items()}, f, indent=2)
+                
+                with open(os.path.join(meta_dir, "old_to_new_map.json"), "w") as f:
+                    json.dump({str(k): v for k, v in self.mapping_tokenizer.old_to_new_map.items()}, f, indent=2)
+                
+                with open(os.path.join(meta_dir, "replacement_character_map.json"), "w") as f:
+                    json.dump({str(k): v for k, v in self.mapping_tokenizer.replacement_character_map.items()}, f, indent=2)
+                
+                # Optional metadata for reference
+                with open(os.path.join(meta_dir, "token_id_language_map.json"), "w") as f:
+                    json.dump(self.token_classifier.classified_ids_with_ranges, f, indent=2)
+                
+                with open(os.path.join(meta_dir, "token_text_language_map.json"), "w") as f:
+                    json.dump(self.token_classifier.classified_tokens_with_ranges, f, indent=2)
+                
+                with open(os.path.join(meta_dir, "vocabulary_languages.txt"), "w") as f:
+                    sorted_langs = sorted(self.token_classifier.all_languages_data, key=lambda x: x[1], reverse=False)
+                    for language, id_count in sorted_langs:
+                        f.write(f"{language}\t{id_count}\n")
+                
+                # Copy tokenization.py to enable AutoTokenizer.from_pretrained()
+                tokenization_file = Path(__file__).parent / "tokenization.py"
+                if tokenization_file.exists():
+                    import shutil
+                    shutil.copy2(tokenization_file, os.path.join(save_directory, "tokenization.py"))
+                
+                # Copy chat_template.jinja from old_tokenizer to root if it exists
+                chat_template_jinja = Path(old_tok_dir) / "chat_template.jinja"
+                if chat_template_jinja.exists():
+                    import shutil
+                    shutil.copy2(chat_template_jinja, os.path.join(save_directory, "chat_template.jinja"))
+                    logger.info("✓ Copied chat_template.jinja file")
+                
+                # Save config compatible with AutoTokenizer
+                config = {
+                    "auto_map": {
+                        "AutoTokenizer": ["tokenization.RBPETokenizer", None]
+                    },
+                    "model_type": "rbpe",
+                    "tokenizer_class": "RBPETokenizer",
+                    "target_language": "arabic",
+                    "model_max_length": self.old_tokenizer.model_max_length,
+                }
+                
+                # Add special tokens to config
+                if self.old_tokenizer.pad_token:
+                    config["pad_token"] = self.old_tokenizer.pad_token
+                if self.old_tokenizer.eos_token:
+                    config["eos_token"] = self.old_tokenizer.eos_token
+                if self.old_tokenizer.bos_token:
+                    config["bos_token"] = self.old_tokenizer.bos_token
+                if self.old_tokenizer.unk_token:
+                    config["unk_token"] = self.old_tokenizer.unk_token
+                
+                # Preserve chat template if available
+                if hasattr(self.old_tokenizer, 'chat_template') and self.old_tokenizer.chat_template:
+                    config["chat_template"] = self.old_tokenizer.chat_template
+                    logger.info("✓ Preserved chat template from base tokenizer")
+                
+                with open(os.path.join(save_directory, "tokenizer_config.json"), "w") as f:
+                    json.dump(config, f, indent=2)
+                
+                # Save special tokens map (with detailed format for HF compatibility)
+                special_tokens_map = {}
+                for key in ["bos_token", "eos_token", "unk_token", "pad_token"]:
+                    token = getattr(self.old_tokenizer, key, None)
+                    if token:
+                        special_tokens_map[key] = {
+                            "content": token,
+                            "single_word": False,
+                            "lstrip": False,
+                            "rstrip": False,
+                            "normalized": False
+                        }
+                
+                with open(os.path.join(save_directory, "special_tokens_map.json"), "w") as f:
+                    json.dump(special_tokens_map, f, indent=2)
+                
+                logger.info(f"R-BPE tokenizer saved to {save_directory}")
+                logger.info("Tokenizer can be loaded with: AutoTokenizer.from_pretrained(path, trust_remote_code=True)")
         
-        self.tokenizer = dynamic_tokenizer_class(
-            mapping_tokenizer=self.mapping_tokenizer,
-            model_id=self.model_id
-        )
+        self.tokenizer = RBPETokenizerSaver(self)
         
         logger.info("Tokenizer preparation completed successfully!")
         
         return self.tokenizer
     
     @classmethod
-    def from_pretrained(cls, pretrained_path: str, **kwargs) -> PreTrainedTokenizerBase:
-        config_path = os.path.join(pretrained_path, 'tokenizer_config.json')
-        with open(config_path, 'r', encoding='utf-8') as f:
-            config = json.load(f)
-
-        custom_tokenizer_config = config['custom_tokenizer_config']
-        mapping_tokenizer_state = config['mapping_tokenizer']
-        mapping_tokenizer_dict = json.loads(mapping_tokenizer_state)
-
-        # Rebuild MappingTokenizer from JSON, but override its paths to the bundled ones
-        mapping_tokenizer_dict['new_tokenizer_path'] = os.path.join(pretrained_path, 'new_tokenizer')
-        mapping_tokenizer_dict['old_tokenizer_path'] = os.path.join(pretrained_path, 'old_tokenizer')
-        mapping_tokenizer = MappingTokenizer.from_json(json.dumps(mapping_tokenizer_dict))
-
-        base_tokenizer_class = AutoTokenizer.from_pretrained(custom_tokenizer_config['model_id']).__class__
-        dynamic_tokenizer_class = create_dynamic_tokenizer(base_tokenizer_class, mapping_tokenizer, custom_tokenizer_config)
-
-        return dynamic_tokenizer_class(
-            model_id=custom_tokenizer_config['model_id'],
-            mapping_tokenizer=mapping_tokenizer,
-            **kwargs
+    def from_pretrained(cls, pretrained_path: str, **kwargs):
+        """
+        Load a pretrained R-BPE tokenizer.
+        
+        Note: This method is deprecated. Use AutoTokenizer.from_pretrained() instead:
+            from transformers import AutoTokenizer
+            tokenizer = AutoTokenizer.from_pretrained(pretrained_path, trust_remote_code=True)
+        
+        Args:
+            pretrained_path: Path to the saved tokenizer directory
+            **kwargs: Additional arguments (unused)
+        
+        Returns:
+            Reference to use AutoTokenizer instead
+        """
+        logger.warning(
+            "RBPETokenizer.from_pretrained() is deprecated. "
+            "Please use AutoTokenizer.from_pretrained() instead:\n"
+            "  from transformers import AutoTokenizer\n"
+            f"  tokenizer = AutoTokenizer.from_pretrained('{pretrained_path}', trust_remote_code=True)"
         )
+        
+        # Try to import and return the Rust-based tokenizer
+        try:
+            from transformers import AutoTokenizer
+            return AutoTokenizer.from_pretrained(pretrained_path, trust_remote_code=True)
+        except Exception as e:
+            raise ImportError(
+                f"Failed to load tokenizer. Make sure:\n"
+                f"1. Rust tokenizer is built: cd rbpe-tokenizers && maturin develop --release\n"
+                f"2. Tokenizer directory exists: {pretrained_path}\n"
+                f"Error: {e}"
+            )

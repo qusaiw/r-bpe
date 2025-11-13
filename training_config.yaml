@@ -1,0 +1,10 @@
+model_id: "meta-llama/Llama-3.1-8B"
+training_data_dir: ./data/training_data
+output_dir: ./test_rbpe_tokenizer
+target_language_scripts:
+  - arabic
+preserved_languages_scripts:
+  - latin
+min_reusable_count: 5000
+clean_data: true
+apply_rbpe_arabic_norm: true
