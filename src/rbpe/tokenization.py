@@ -168,46 +168,11 @@ class RBPETokenizer(PreTrainedTokenizer):
         """Convert an ID (int) to a token (str)."""
         return str(index)
     
-    # def convert_tokens_to_string(self, tokens: List[str]) -> str:
-    #     """Convert a sequence of tokens to a single string."""
-    #     ids = [int(token) for token in tokens]
-    #     return self._rust_tokenizer.decode(ids, skip_special_tokens=True)
-    
     def convert_tokens_to_string(self, tokens: List[str]) -> str:
         """Convert a sequence of tokens to a single string."""
-        ids = []
-        for token in tokens:
-            # Skip special tokens that are not numeric
-            if token.startswith('<') and token.endswith('>'):
-                # Handle special tokens - try to map them to their IDs
-                if token == '<BOS_TOKEN>' or token == self.bos_token:
-                    if self.bos_token_id is not None:
-                        ids.append(self.bos_token_id)
-                elif token == '<EOS_TOKEN>' or token == self.eos_token:
-                    if self.eos_token_id is not None:
-                        ids.append(self.eos_token_id)
-                elif token == '<PAD_TOKEN>' or token == self.pad_token:
-                    if self.pad_token_id is not None:
-                        ids.append(self.pad_token_id)
-                elif token == '<UNK_TOKEN>' or token == self.unk_token:
-                    if self.unk_token_id is not None:
-                        ids.append(self.unk_token_id)
-                # Otherwise skip unknown special tokens
-                continue
-            else:
-                # Convert numeric token to int
-                try:
-                    ids.append(int(token))
-                except ValueError:
-                    # Skip tokens that can't be converted
-                    continue
-        
-        if not ids:
-            return ""
-        
+        ids = [int(token) for token in tokens]
         return self._rust_tokenizer.decode(ids, skip_special_tokens=True)
-
-        
+    
     def _encode_plus(
         self,
         text: Union[TextInput, PreTokenizedInput, EncodedInput],
@@ -277,13 +242,6 @@ class RBPETokenizer(PreTrainedTokenizer):
                 return_tensors=return_tensors,
                 verbose=verbose,
             )
-        
-        # For single sequences with tensor output, wrap in a list to get 2D tensor
-        if return_tensors is not None:
-            encoded_inputs = {
-                "input_ids": [input_ids],
-                "attention_mask": [attention_mask],
-            }
         
         # Convert to BatchEncoding
         return BatchEncoding(encoded_inputs, tensor_type=return_tensors)
@@ -367,16 +325,6 @@ class RBPETokenizer(PreTrainedTokenizer):
         """
         Decode a sequence of token IDs to a string.
         """
-        # Convert tensor to list if needed
-        if hasattr(token_ids, 'tolist'):
-            token_ids = token_ids.tolist()
-        elif not isinstance(token_ids, list):
-            # Handle single integer or other iterables
-            if isinstance(token_ids, int):
-                token_ids = [token_ids]
-            else:
-                token_ids = list(token_ids)
-        
         # Use advanced decoder for better handling of replacement characters
         use_advanced = kwargs.pop('use_advanced_decoder', True)
         

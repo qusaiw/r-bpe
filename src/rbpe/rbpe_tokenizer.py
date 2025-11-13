@@ -28,7 +28,7 @@ logger = setup_logger('BPE')
 class RBPETokenizer:
     """Factory class to create and prepare a custom R-BPE tokenizer with minimal configuration requirements."""
     def __init__(self, model_id, training_data_dir, clean_data=True, cleaned_data_dir=None,
-                         hf_token=None, min_reusable_count=20000, target_language_scripts=['arabic'], preserved_languages_scripts=['latin', 'greek'],
+                         hf_token=None, min_reusable_count=50000, target_language_scripts=['arabic'], preserved_languages_scripts=['latin', 'greek'],
                          special_tokens={}, additional_special_tokens=[], apply_rbpe_arabic_norm=True):
         """Initialize an R-BPE tokenizer from parameters.
         
@@ -275,6 +275,13 @@ class RBPETokenizer:
                     import shutil
                     shutil.copy2(tokenization_file, os.path.join(save_directory, "tokenization.py"))
                 
+                # Copy chat_template.jinja from old_tokenizer to root if it exists
+                chat_template_jinja = Path(old_tok_dir) / "chat_template.jinja"
+                if chat_template_jinja.exists():
+                    import shutil
+                    shutil.copy2(chat_template_jinja, os.path.join(save_directory, "chat_template.jinja"))
+                    logger.info("✓ Copied chat_template.jinja file")
+                
                 # Save config compatible with AutoTokenizer
                 config = {
                     "auto_map": {
@@ -283,6 +290,7 @@ class RBPETokenizer:
                     "model_type": "rbpe",
                     "tokenizer_class": "RBPETokenizer",
                     "target_language": "arabic",
+                    "model_max_length": self.old_tokenizer.model_max_length,
                 }
                 
                 # Add special tokens to config
@@ -295,19 +303,26 @@ class RBPETokenizer:
                 if self.old_tokenizer.unk_token:
                     config["unk_token"] = self.old_tokenizer.unk_token
                 
+                # Preserve chat template if available
+                if hasattr(self.old_tokenizer, 'chat_template') and self.old_tokenizer.chat_template:
+                    config["chat_template"] = self.old_tokenizer.chat_template
+                    logger.info("✓ Preserved chat template from base tokenizer")
+                
                 with open(os.path.join(save_directory, "tokenizer_config.json"), "w") as f:
                     json.dump(config, f, indent=2)
                 
-                # Save special tokens map
+                # Save special tokens map (with detailed format for HF compatibility)
                 special_tokens_map = {}
-                if self.old_tokenizer.pad_token:
-                    special_tokens_map["pad_token"] = self.old_tokenizer.pad_token
-                if self.old_tokenizer.eos_token:
-                    special_tokens_map["eos_token"] = self.old_tokenizer.eos_token
-                if self.old_tokenizer.bos_token:
-                    special_tokens_map["bos_token"] = self.old_tokenizer.bos_token
-                if self.old_tokenizer.unk_token:
-                    special_tokens_map["unk_token"] = self.old_tokenizer.unk_token
+                for key in ["bos_token", "eos_token", "unk_token", "pad_token"]:
+                    token = getattr(self.old_tokenizer, key, None)
+                    if token:
+                        special_tokens_map[key] = {
+                            "content": token,
+                            "single_word": False,
+                            "lstrip": False,
+                            "rstrip": False,
+                            "normalized": False
+                        }
                 
                 with open(os.path.join(save_directory, "special_tokens_map.json"), "w") as f:
                     json.dump(special_tokens_map, f, indent=2)
