@@ -140,7 +140,10 @@ impl RBPEModel {
     }
 
     /// Decode token IDs back to text (basic version without replacement character handling)
-    pub fn decode(&self, ids: &[u32], skip_special_tokens: bool) -> Result<String, RBPEError> {
+    /// 
+    /// This is a faster version that doesn't handle replacement characters.
+    /// For production use, prefer `decode()` which automatically handles edge cases.
+    pub fn decode_basic(&self, ids: &[u32], skip_special_tokens: bool) -> Result<String, RBPEError> {
         // Group IDs by whether they're mapped
         let segments = self.group_ids_by_mapping(ids);
 
@@ -162,6 +165,15 @@ impl RBPEModel {
         Ok(decoded_parts.join(""))
     }
 
+    /// Decode token IDs back to text with automatic replacement character handling
+    /// 
+    /// This is the recommended decode method that matches Python's MappingTokenizer behavior.
+    /// It automatically detects and handles replacement characters using the advanced decoder
+    /// when needed, falling back to fast basic decode when possible.
+    pub fn decode(&self, ids: &[u32], skip_special_tokens: bool) -> Result<String, RBPEError> {
+        self.decode_advanced(ids, skip_special_tokens)
+    }
+
     /// Advanced decode with replacement character handling using sliding window
     /// 
     /// This method handles UTF-8 byte sequences that may be split across multiple tokens.
@@ -169,7 +181,7 @@ impl RBPEModel {
     /// algorithm to find optimal token groupings.
     pub fn decode_advanced(&self, ids: &[u32], skip_special_tokens: bool) -> Result<String, RBPEError> {
         // Try basic decode first
-        let basic_decoded = self.decode(ids, skip_special_tokens)?;
+        let basic_decoded = self.decode_basic(ids, skip_special_tokens)?;
         
         // If no replacement characters, return early (fast path)
         if !basic_decoded.contains('�') {
@@ -237,6 +249,29 @@ impl RBPEModel {
     /// Get the normalizer
     pub fn normalizer(&self) -> Option<&RBPENormalizer> {
         self.normalizer.as_ref()
+    }
+    
+    /// Get token ID for a given token string
+    /// 
+    /// This queries the old tokenizer's vocabulary (R-BPE output space).
+    /// Returns None if the token is not in the vocabulary.
+    pub fn token_to_id(&self, token: &str) -> Option<u32> {
+        self.old_tokenizer.token_to_id(token)
+    }
+    
+    /// Get token string for a given token ID
+    /// 
+    /// This queries the old tokenizer's vocabulary (R-BPE output space).
+    /// Returns None if the ID is not in the vocabulary.
+    pub fn id_to_token(&self, id: u32) -> Option<String> {
+        self.old_tokenizer.id_to_token(id)
+    }
+    
+    /// Get the vocabulary size
+    /// 
+    /// Returns the size of the old tokenizer's vocabulary (R-BPE output space).
+    pub fn vocab_size(&self) -> usize {
+        self.old_tokenizer.get_vocab_size(false) // false = don't include added tokens
     }
 }
 

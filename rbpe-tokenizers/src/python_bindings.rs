@@ -238,6 +238,36 @@ impl PyRBPETokenizer {
             .collect()
     }
     
+    /// Get token ID for a given token string
+    /// 
+    /// Args:
+    ///     token: Token string to look up
+    /// 
+    /// Returns:
+    ///     Token ID or None if not in vocabulary
+    fn token_to_id(&self, token: &str) -> Option<u32> {
+        self.inner.token_to_id(token)
+    }
+    
+    /// Get token string for a given token ID
+    /// 
+    /// Args:
+    ///     id: Token ID to look up
+    /// 
+    /// Returns:
+    ///     Token string or None if ID not in vocabulary
+    fn id_to_token(&self, id: u32) -> Option<String> {
+        self.inner.id_to_token(id)
+    }
+    
+    /// Get the vocabulary size
+    /// 
+    /// Returns:
+    ///     Size of the vocabulary
+    fn vocab_size(&self) -> usize {
+        self.inner.vocab_size()
+    }
+    
     /// Get a string representation
     fn __repr__(&self) -> String {
         "RBPETokenizer(dual_tokenizer=true, language_aware=true)".to_string()

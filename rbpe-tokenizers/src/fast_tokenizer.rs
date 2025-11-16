@@ -113,6 +113,25 @@ impl RBPEFastTokenizer {
             .map(|text| self.encode_to_encoding(text))
             .collect()
     }
+    
+    /// Get token ID for a given token string
+    /// 
+    /// Returns None if the token is not in the vocabulary.
+    pub fn token_to_id(&self, token: &str) -> Option<u32> {
+        self.model.token_to_id(token)
+    }
+    
+    /// Get token string for a given token ID
+    /// 
+    /// Returns None if the ID is not in the vocabulary.
+    pub fn id_to_token(&self, id: u32) -> Option<String> {
+        self.model.id_to_token(id)
+    }
+    
+    /// Get the vocabulary size
+    pub fn vocab_size(&self) -> usize {
+        self.model.vocab_size()
+    }
 }
 
 use ahash::AHashMap;

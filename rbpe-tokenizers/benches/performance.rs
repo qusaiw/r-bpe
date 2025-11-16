@@ -82,9 +82,20 @@ fn bench_decode(c: &mut Criterion) {
     let mut group = c.benchmark_group("decode");
     
     for (name, ids) in test_cases {
-        // Basic decode
+        // Basic decode (fast path without replacement character handling)
         group.bench_with_input(
             BenchmarkId::new("basic_decode", name),
+            &ids,
+            |b, ids| {
+                b.iter(|| {
+                    model.decode_basic(black_box(ids), false).unwrap()
+                });
+            },
+        );
+        
+        // Standard decode (with automatic replacement character handling)
+        group.bench_with_input(
+            BenchmarkId::new("decode", name),
             &ids,
             |b, ids| {
                 b.iter(|| {
@@ -93,7 +104,7 @@ fn bench_decode(c: &mut Criterion) {
             },
         );
         
-        // Advanced decode
+        // Advanced decode (explicit advanced decoder)
         group.bench_with_input(
             BenchmarkId::new("advanced_decode", name),
             &ids,
