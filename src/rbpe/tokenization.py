@@ -97,24 +97,24 @@ class RBPETokenizer(PreTrainedTokenizer):
         # Determine paths
         self.name_or_path = kwargs.get('name_or_path', '.')
         
-        # Fix special token IDs: added_tokens_decoder has duplicates (both R-BPE and original IDs)
-        # We need to ensure the encoder map (added_tokens_encoder) points to R-BPE IDs (< 100)
-        # Remove high ID duplicates from added_tokens_encoder to force use of low IDs
-        tokens_to_fix = {
-            '<BOS_TOKEN>': 5,
-            '<EOS_TOKEN>': 6,
-            '<PAD>': 0,
-            '<UNK>': 1,
-            '<MASK_TOKEN>': 4,
-            '<SEP>': 3,
-            '<CLS>': 2,
-        }
-        
-        # Update the added_tokens_encoder to use R-BPE IDs
-        for token_str, correct_id in tokens_to_fix.items():
-            if token_str in self.added_tokens_encoder:
-                # Force it to use the R-BPE ID, not the high ID
-                self.added_tokens_encoder[token_str] = correct_id
+        # Fix special token IDs: added_tokens_decoder may have duplicates (both R-BPE and original IDs)
+        # We need to ensure the encoder map (added_tokens_encoder) uses the lowest ID for each token
+        # R-BPE places special tokens in low ID range after remapping
+        if hasattr(self, 'added_tokens_decoder'):
+            # Build a map of token_string -> lowest_id
+            token_to_lowest_id = {}
+            for token_id_str, token_data in self.added_tokens_decoder.items():
+                token_id = int(token_id_str)
+                if isinstance(token_data, dict) and 'content' in token_data:
+                    token_str = token_data['content']
+                    # Keep the lowest ID for this token string
+                    if token_str not in token_to_lowest_id or token_id < token_to_lowest_id[token_str]:
+                        token_to_lowest_id[token_str] = token_id
+            
+            # Update added_tokens_encoder to use the lowest IDs
+            for token_str, lowest_id in token_to_lowest_id.items():
+                if token_str in self.added_tokens_encoder:
+                    self.added_tokens_encoder[token_str] = lowest_id
         
         if new_tokenizer_file is None:
             # Load from directory using from_pretrained
