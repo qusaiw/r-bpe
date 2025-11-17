@@ -9,7 +9,7 @@ description = "R-BPE: Improving BPE-Tokenizers with Token Reuse"
 readme = "README.md"
 requires-python = ">=3.10.12"
 dependencies = [
-    "transformers==4.49.0",
+    "transformers>=4.49.0",
     "datasets==3.0.0",
     "pytest==8.3.4",
     "torch>=2.6.0",
