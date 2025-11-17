@@ -53,15 +53,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let ids = model.encode(text, false)?;
         println!("\nEncoded to {} tokens", ids.len());
         
-        // Basic decode
-        let basic_decoded = model.decode(&ids, false)?;
+        // Basic decode (fast but may have replacement chars)
+        let basic_decoded = model.decode_basic(&ids, false)?;
         let basic_has_replacement = basic_decoded.contains('�');
         
-        // Advanced decode  
-        let advanced_decoded = model.decode_advanced(&ids, false)?;
-        let advanced_has_replacement = advanced_decoded.contains('�');
+        // Standard decode (with automatic replacement handling)
+        let decoded = model.decode(&ids, false)?;
+        let has_replacement = decoded.contains('�');
         
-        println!("\nBasic Decoder:");
+        println!("\nBasic Decoder (fast path):");
         println!("  Output: {}", basic_decoded);
         if basic_has_replacement {
             let count = basic_decoded.matches('�').count();
@@ -70,29 +70,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("  ✓ No replacement characters");
         }
         
-        println!("\nAdvanced Decoder:");
-        println!("  Output: {}", advanced_decoded);
-        if advanced_has_replacement {
-            let count = advanced_decoded.matches('�').count();
+        println!("\nStandard Decoder (recommended):");
+        println!("  Output: {}", decoded);
+        if has_replacement {
+            let count = decoded.matches('�').count();
             println!("  ⚠️  Contains {} replacement character(s)", count);
         } else {
             println!("  ✓ No replacement characters");
         }
         
         // Compare
-        if basic_decoded == advanced_decoded {
+        if basic_decoded == decoded {
             println!("\n✓ Both decoders produced identical output");
         } else {
             println!("\n⚠️  Decoders produced different outputs");
-            if !basic_has_replacement && !advanced_has_replacement {
+            if !basic_has_replacement && !has_replacement {
                 println!("   (Both valid, but using different decoding paths)");
-            } else if basic_has_replacement && !advanced_has_replacement {
-                println!("   ✓ Advanced decoder successfully handled replacement characters!");
+            } else if basic_has_replacement && !has_replacement {
+                println!("   ✓ Standard decoder successfully handled replacement characters!");
             }
         }
         
         // Verify match with original
-        if advanced_decoded.trim() == text.trim() {
+        if decoded.trim() == text.trim() {
             println!("✓ Perfect match with original input");
         } else {
             println!("⚠️  Output differs from input (may be due to tokenization artifacts)");

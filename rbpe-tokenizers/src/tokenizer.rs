@@ -115,9 +115,8 @@ impl RBPETokenizer {
     
     /// Get vocab size (returns old tokenizer vocab size)
     pub fn vocab_size(&self) -> usize {
-        // This would need to be extracted from the old tokenizer
-        // For now, return a placeholder
-        128256 // Typical size for Llama-based models
+        // Delegate to the underlying model which queries the actual tokenizer
+        self.model.vocab_size()
     }
 }
 
