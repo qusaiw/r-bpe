@@ -113,8 +113,11 @@ impl RBPEModel {
         // 3. Encode each segment and collect IDs
         let mut all_ids = Vec::new();
 
-        for segment in segments {
-            let segment_ids = self.encode_segment(&segment, add_special_tokens)?;
+        for (i, segment) in segments.iter().enumerate() {
+            // Only add special tokens to the first segment to avoid duplicate BOS/EOS tokens
+            // when text is split across language boundaries
+            let add_special = add_special_tokens && i == 0;
+            let segment_ids = self.encode_segment(segment, add_special)?;
             all_ids.extend(segment_ids);
         }
 

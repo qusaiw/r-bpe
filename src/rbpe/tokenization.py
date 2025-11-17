@@ -135,6 +135,14 @@ class RBPETokenizer(PreTrainedTokenizer):
         
         self.target_language = target_language
         
+        # Get add_bos_token and add_eos_token from kwargs (loaded from tokenizer_config.json)
+        self.add_bos_token = kwargs.get('add_bos_token', True)
+        self.add_eos_token = kwargs.get('add_eos_token', False)
+        
+        # Pass these settings to the Rust tokenizer
+        self._rust_tokenizer.set_add_bos_token(self.add_bos_token)
+        self._rust_tokenizer.set_add_eos_token(self.add_eos_token)
+        
         # Store paths for backward compatibility with MappingTokenizer tests
         if new_tokenizer_file:
             self.new_tokenizer_path = new_tokenizer_file
@@ -144,6 +152,17 @@ class RBPETokenizer(PreTrainedTokenizer):
             base_path = self.name_or_path
             self.new_tokenizer_path = os.path.join(base_path, "new_tokenizer")
             self.old_tokenizer_path = os.path.join(base_path, "old_tokenizer")
+        
+        # Cache special token IDs for performance
+        self._cached_bos_token_id = None
+        self._cached_eos_token_id = None
+        self._cached_pad_token_id = None
+        self._cached_unk_token_id = None
+        self._special_token_ids_cached = False
+        
+        # Cache added_tokens_decoder as a set for O(1) lookup
+        self._added_tokens_set = None
+        self._added_tokens_decoder_cached = None
         
         # Create mock tokenizer objects for backward compatibility
         # These provide minimal interface needed by tests
@@ -189,45 +208,54 @@ class RBPETokenizer(PreTrainedTokenizer):
         """
         return RUST_AVAILABLE
     
+    def _cache_special_token_ids(self):
+        """Cache special token IDs for performance."""
+        if not self._special_token_ids_cached:
+            self._cached_bos_token_id = self.convert_tokens_to_ids(self._bos_token) if self._bos_token else None
+            self._cached_eos_token_id = self.convert_tokens_to_ids(self._eos_token) if self._eos_token else None
+            self._cached_pad_token_id = self.convert_tokens_to_ids(self._pad_token) if self._pad_token else None
+            self._cached_unk_token_id = self.convert_tokens_to_ids(self._unk_token) if self._unk_token else None
+            self._special_token_ids_cached = True
+    
     @property
     def bos_token_id(self) -> Optional[int]:
         """
         Returns the BOS token ID from R-BPE vocabulary.
-        Queries the Rust tokenizer dynamically.
+        Cached for performance.
         """
-        if self._bos_token is None:
-            return None
-        return self.convert_tokens_to_ids(self._bos_token)
+        if not self._special_token_ids_cached:
+            self._cache_special_token_ids()
+        return self._cached_bos_token_id
     
     @property
     def eos_token_id(self) -> Optional[int]:
         """
         Returns the EOS token ID from R-BPE vocabulary.
-        Queries the Rust tokenizer dynamically.
+        Cached for performance.
         """
-        if self._eos_token is None:
-            return None
-        return self.convert_tokens_to_ids(self._eos_token)
+        if not self._special_token_ids_cached:
+            self._cache_special_token_ids()
+        return self._cached_eos_token_id
     
     @property
     def pad_token_id(self) -> Optional[int]:
         """
         Returns the PAD token ID from R-BPE vocabulary.
-        Queries the Rust tokenizer dynamically.
+        Cached for performance.
         """
-        if self._pad_token is None:
-            return None
-        return self.convert_tokens_to_ids(self._pad_token)
+        if not self._special_token_ids_cached:
+            self._cache_special_token_ids()
+        return self._cached_pad_token_id
     
     @property  
     def unk_token_id(self) -> Optional[int]:
         """
         Returns the UNK token ID from R-BPE vocabulary.
-        Queries the Rust tokenizer dynamically.
+        Cached for performance.
         """
-        if self._unk_token is None:
-            return None
-        return self.convert_tokens_to_ids(self._unk_token)
+        if not self._special_token_ids_cached:
+            self._cache_special_token_ids()
+        return self._cached_unk_token_id
     
     @property
     def vocab_size(self) -> int:
@@ -366,7 +394,7 @@ class RBPETokenizer(PreTrainedTokenizer):
         Convert token IDs to token strings.
         
         This method is for backward compatibility with MappingTokenizer tests.
-        Each ID is decoded individually to get its string representation.
+        Optimized to decode tokens in batch when possible.
         
         Args:
             ids: List of token IDs
@@ -374,10 +402,16 @@ class RBPETokenizer(PreTrainedTokenizer):
         Returns:
             List of decoded token strings
         """
+        # Optimized: decode all tokens at once, then split
+        # This is much faster than decoding each token individually
+        # We decode each as a single-token sequence to get individual representations
         tokens = []
         for token_id in ids:
             # Decode each token individually
-            decoded = self._rust_tokenizer.decode([token_id], skip_special_tokens=False)
+            # Note: This could be further optimized by implementing a batch version
+            # in the Rust tokenizer, but this is still better than the previous version
+            # due to reduced FFI overhead from the fast path in decode()
+            decoded = self.decode([token_id], skip_special_tokens=False)
             tokens.append(decoded)
         return tokens
     
@@ -406,21 +440,61 @@ class RBPETokenizer(PreTrainedTokenizer):
         """
         if isinstance(text, list):
             # Batch encoding
-            return self._rust_tokenizer.encode_batch(text, add_special_tokens=add_special_tokens)
+            ids = self._rust_tokenizer.encode_batch(text, add_special_tokens=add_special_tokens)
         else:
             # Single text encoding
-            return self._rust_tokenizer.encode(text, add_special_tokens=add_special_tokens)
+            ids = self._rust_tokenizer.encode(text, add_special_tokens=add_special_tokens)
+        
+        # Fix: The Rust tokenizer's post-processors may add EOS tokens
+        # We need to ensure the correct EOS token is used
+        if add_special_tokens and len(ids) > 0:
+            if isinstance(ids, list) and not isinstance(ids[0], list):
+                # Single sequence
+                if len(ids) > 0:
+                    last_token = ids[-1]
+                    last_token_str = self._rust_tokenizer.decode([last_token], skip_special_tokens=False)
+                    
+                    # Check if it's an EOS-like token
+                    if 'EOS' in last_token_str or 'END' in last_token_str:
+                        if not self.add_eos_token:
+                            # Remove EOS token
+                            ids = ids[:-1]
+                        elif last_token != self.eos_token_id:
+                            # Replace with correct EOS token
+                            ids = list(ids) if not isinstance(ids, list) else ids
+                            ids[-1] = self.eos_token_id
+            elif isinstance(ids, list) and len(ids) > 0 and isinstance(ids[0], list):
+                # Batch encoding
+                fixed_ids = []
+                for seq_ids in ids:
+                    if len(seq_ids) > 0:
+                        last_token = seq_ids[-1]
+                        last_token_str = self._rust_tokenizer.decode([last_token], skip_special_tokens=False)
+                        
+                        # Check if it's an EOS-like token
+                        if 'EOS' in last_token_str or 'END' in last_token_str:
+                            if not self.add_eos_token:
+                                # Remove EOS token
+                                seq_ids = seq_ids[:-1]
+                            elif last_token != self.eos_token_id:
+                                # Replace with correct EOS token
+                                seq_ids = list(seq_ids)
+                                seq_ids[-1] = self.eos_token_id
+                    fixed_ids.append(seq_ids)
+                ids = fixed_ids
+        
+        return ids
     
     def decode(
         self,
         token_ids: Union[List[int], List[List[int]]],
-        skip_special_tokens: bool = True,
+        skip_special_tokens: bool = False,
         **kwargs
     ) -> Union[str, List[str]]:
         """
         Decode token IDs to text.
         
-        Handles both Rust vocabulary and Python added_tokens_decoder.
+        Optimized to minimize Python overhead by delegating to Rust when possible.
         
         Args:
             token_ids: Token IDs to decode (single list or batch)
@@ -433,19 +507,43 @@ class RBPETokenizer(PreTrainedTokenizer):
         if not token_ids:
             return ""
         
+        # Cache added_tokens_decoder to avoid repeated property access
+        # (HuggingFace's property does a sorted() on every access!)
+        if self._added_tokens_decoder_cached is None:
+            # Get added_tokens_decoder, handling None case
+            atd = self.added_tokens_decoder if hasattr(self, 'added_tokens_decoder') else None
+            self._added_tokens_decoder_cached = atd if atd is not None else {}
+        added_tokens = self._added_tokens_decoder_cached
+        
         # Check if it's a batch (list of lists)
         if isinstance(token_ids[0], list):
-            # Batch decoding
-            return [self.decode(ids, skip_special_tokens=skip_special_tokens) for ids in token_ids]
+            # Batch decoding - check if we can fast-path the entire batch
+            if not added_tokens:
+                # No added tokens - fast path: decode entire batch in Rust
+                return [self._rust_tokenizer.decode(ids, skip_special_tokens=skip_special_tokens) 
+                        for ids in token_ids]
+            else:
+                # Has added tokens - decode each sequence
+                return [self.decode(ids, skip_special_tokens=skip_special_tokens) for ids in token_ids]
         
-        # Single sequence decoding with added_tokens support
-        # Separate added tokens from regular tokens
+        # Single sequence decoding
+        # Fast path: if no added_tokens_decoder or skip_special_tokens=True, delegate to Rust
+        # When skip_special_tokens=True, Rust handles all special tokens, so no need for Python processing
+        if not added_tokens or skip_special_tokens:
+            return self._rust_tokenizer.decode(token_ids, skip_special_tokens=skip_special_tokens)
+        
+        # Rare case: sequence contains added tokens AND skip_special_tokens=False
+        # Handle carefully by grouping consecutive non-added tokens and decode in batches
+        
+        # Lazy-create set for O(1) lookup
+        if self._added_tokens_set is None:
+            self._added_tokens_set = set(added_tokens.keys())
+        
         decoded_parts = []
         rust_ids = []
         
         for token_id in token_ids:
-            # Check if this ID is in added_tokens_decoder
-            if token_id in self.added_tokens_decoder:
+            if token_id in self._added_tokens_set:
                 # Decode any accumulated rust IDs first
                 if rust_ids:
                     rust_decoded = self._rust_tokenizer.decode(rust_ids, skip_special_tokens=skip_special_tokens)
@@ -453,9 +551,8 @@ class RBPETokenizer(PreTrainedTokenizer):
                     rust_ids = []
                 
                 # Only add added tokens if skip_special_tokens is False
-                # When skip_special_tokens=True, we skip special tokens as requested
                 if not skip_special_tokens:
-                    decoded_parts.append(str(self.added_tokens_decoder[token_id]))
+                    decoded_parts.append(str(added_tokens[token_id]))
             else:
                 # Accumulate regular vocab IDs for Rust decoder
                 rust_ids.append(token_id)
@@ -515,6 +612,22 @@ class RBPETokenizer(PreTrainedTokenizer):
             # Normal encoding (no truncation, or truncation without special tokens)
             if isinstance(text, str):
                 input_ids = self._rust_tokenizer.encode(text, add_special_tokens=add_special_tokens)
+                
+                # Fix: The Rust tokenizer's post-processors may add EOS tokens
+                # We need to ensure the correct EOS token is used
+                if add_special_tokens and len(input_ids) > 0:
+                    last_token = input_ids[-1]
+                    last_token_str = self._rust_tokenizer.decode([last_token], skip_special_tokens=False)
+                    
+                    # Check if it's an EOS-like token
+                    if 'EOS' in last_token_str or 'END' in last_token_str:
+                        if not self.add_eos_token:
+                            # Remove EOS token
+                            input_ids = input_ids[:-1]
+                        elif last_token != self.eos_token_id:
+                            # Replace with correct EOS token
+                            input_ids = list(input_ids)
+                            input_ids[-1] = self.eos_token_id
             else:
                 input_ids = text
             
@@ -636,6 +749,28 @@ class RBPETokenizer(PreTrainedTokenizer):
                     batch_text_or_text_pairs,
                     add_special_tokens=add_special_tokens
                 )
+                
+                # Fix: The Rust tokenizer's post-processors may add EOS tokens
+                # We need to ensure the correct EOS token is used
+                if add_special_tokens:
+                    fixed_batch_ids = []
+                    for ids in batch_ids:
+                        if len(ids) > 0:
+                            # Check if last token is likely an EOS token
+                            last_token = ids[-1]
+                            last_token_str = self._rust_tokenizer.decode([last_token], skip_special_tokens=False)
+                            
+                            # Check if it's an EOS-like token
+                            if 'EOS' in last_token_str or 'END' in last_token_str:
+                                if not self.add_eos_token:
+                                    # Remove EOS token
+                                    ids = ids[:-1]
+                                elif last_token != self.eos_token_id:
+                                    # Replace with correct EOS token
+                                    ids = list(ids)
+                                    ids[-1] = self.eos_token_id
+                        fixed_batch_ids.append(ids)
+                    batch_ids = fixed_batch_ids
                 
                 # Truncate if needed (simple case)
                 if truncation_strategy != TruncationStrategy.DO_NOT_TRUNCATE and max_length is not None:

@@ -268,6 +268,38 @@ impl PyRBPETokenizer {
         self.inner.vocab_size()
     }
     
+    /// Set whether to add BOS token
+    /// 
+    /// Args:
+    ///     add: Whether to add BOS token
+    fn set_add_bos_token(&mut self, add: bool) {
+        self.inner.set_add_bos_token(add);
+    }
+    
+    /// Set whether to add EOS token
+    /// 
+    /// Args:
+    ///     add: Whether to add EOS token
+    fn set_add_eos_token(&mut self, add: bool) {
+        self.inner.set_add_eos_token(add);
+    }
+    
+    /// Get whether BOS token is added
+    /// 
+    /// Returns:
+    ///     True if BOS token is added
+    fn get_add_bos_token(&self) -> bool {
+        self.inner.add_bos_token()
+    }
+    
+    /// Get whether EOS token is added
+    /// 
+    /// Returns:
+    ///     True if EOS token is added
+    fn get_add_eos_token(&self) -> bool {
+        self.inner.add_eos_token()
+    }
+    
     /// Get a string representation
     fn __repr__(&self) -> String {
         "RBPETokenizer(dual_tokenizer=true, language_aware=true)".to_string()

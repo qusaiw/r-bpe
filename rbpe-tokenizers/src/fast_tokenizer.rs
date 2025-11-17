@@ -18,14 +18,34 @@ pub struct RBPEFastTokenizer {
     
     /// Whether to add special tokens by default
     add_special_tokens: bool,
+    
+    /// Whether to add BOS token (configured from tokenizer_config.json)
+    add_bos_token: bool,
+    
+    /// Whether to add EOS token (configured from tokenizer_config.json)
+    add_eos_token: bool,
+    
+    /// BOS token ID (from old tokenizer vocabulary)
+    bos_token_id: Option<u32>,
+    
+    /// EOS token ID (from old tokenizer vocabulary)
+    eos_token_id: Option<u32>,
 }
 
 impl RBPEFastTokenizer {
     /// Create a new FastTokenizer from an existing RBPEModel
     pub fn new(model: RBPEModel) -> Self {
+        // Get BOS and EOS token IDs from the old tokenizer
+        let bos_token_id = model.token_to_id("<BOS_TOKEN>");
+        let eos_token_id = model.token_to_id("<EOS_TOKEN>");
+        
         Self {
             model,
             add_special_tokens: true,
+            add_bos_token: true,  // Default to true
+            add_eos_token: false, // Default to false (matches most configs)
+            bos_token_id,
+            eos_token_id,
         }
     }
     
@@ -54,7 +74,21 @@ impl RBPEFastTokenizer {
     
     /// Encode text to token IDs using R-BPE logic
     pub fn encode_text(&self, text: &str, add_special_tokens: bool) -> Result<Vec<u32>, Box<dyn std::error::Error>> {
-        Ok(self.model.encode(text, add_special_tokens)?)
+        let mut ids = self.model.encode(text, add_special_tokens)?;
+        
+        // Post-process to handle BOS/EOS tokens according to config
+        if add_special_tokens {
+            // The model.encode already adds BOS via the tokenizer's post-processor
+            // We need to handle the EOS token manually if add_eos_token is true
+            if self.add_eos_token {
+                if let Some(eos_id) = self.eos_token_id {
+                    // Add EOS token at the end
+                    ids.push(eos_id);
+                }
+            }
+        }
+        
+        Ok(ids)
     }
     
     /// Decode token IDs to text using R-BPE logic (basic)
@@ -70,6 +104,26 @@ impl RBPEFastTokenizer {
     /// Set whether to add special tokens
     pub fn set_add_special_tokens(&mut self, add: bool) {
         self.add_special_tokens = add;
+    }
+    
+    /// Set whether to add BOS token
+    pub fn set_add_bos_token(&mut self, add: bool) {
+        self.add_bos_token = add;
+    }
+    
+    /// Set whether to add EOS token
+    pub fn set_add_eos_token(&mut self, add: bool) {
+        self.add_eos_token = add;
+    }
+    
+    /// Get whether BOS token is added
+    pub fn add_bos_token(&self) -> bool {
+        self.add_bos_token
+    }
+    
+    /// Get whether EOS token is added
+    pub fn add_eos_token(&self) -> bool {
+        self.add_eos_token
     }
     
     /// Get the underlying model
