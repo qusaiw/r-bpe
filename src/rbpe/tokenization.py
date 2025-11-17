@@ -452,8 +452,10 @@ class RBPETokenizer(PreTrainedTokenizer):
                     decoded_parts.append(rust_decoded)
                     rust_ids = []
                 
-                # Always add added tokens (they were explicitly provided, not auto-added)
-                decoded_parts.append(str(self.added_tokens_decoder[token_id]))
+                # Only add added tokens if skip_special_tokens is False
+                # When skip_special_tokens=True, we skip special tokens as requested
+                if not skip_special_tokens:
+                    decoded_parts.append(str(self.added_tokens_decoder[token_id]))
             else:
                 # Accumulate regular vocab IDs for Rust decoder
                 rust_ids.append(token_id)
