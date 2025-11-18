@@ -238,6 +238,68 @@ impl PyRBPETokenizer {
             .collect()
     }
     
+    /// Get token ID for a given token string
+    /// 
+    /// Args:
+    ///     token: Token string to look up
+    /// 
+    /// Returns:
+    ///     Token ID or None if not in vocabulary
+    fn token_to_id(&self, token: &str) -> Option<u32> {
+        self.inner.token_to_id(token)
+    }
+    
+    /// Get token string for a given token ID
+    /// 
+    /// Args:
+    ///     id: Token ID to look up
+    /// 
+    /// Returns:
+    ///     Token string or None if ID not in vocabulary
+    fn id_to_token(&self, id: u32) -> Option<String> {
+        self.inner.id_to_token(id)
+    }
+    
+    /// Get the vocabulary size
+    /// 
+    /// Returns:
+    ///     Size of the vocabulary
+    fn vocab_size(&self) -> usize {
+        self.inner.vocab_size()
+    }
+    
+    /// Set whether to add BOS token
+    /// 
+    /// Args:
+    ///     add: Whether to add BOS token
+    fn set_add_bos_token(&mut self, add: bool) {
+        self.inner.set_add_bos_token(add);
+    }
+    
+    /// Set whether to add EOS token
+    /// 
+    /// Args:
+    ///     add: Whether to add EOS token
+    fn set_add_eos_token(&mut self, add: bool) {
+        self.inner.set_add_eos_token(add);
+    }
+    
+    /// Get whether BOS token is added
+    /// 
+    /// Returns:
+    ///     True if BOS token is added
+    fn get_add_bos_token(&self) -> bool {
+        self.inner.add_bos_token()
+    }
+    
+    /// Get whether EOS token is added
+    /// 
+    /// Returns:
+    ///     True if EOS token is added
+    fn get_add_eos_token(&self) -> bool {
+        self.inner.add_eos_token()
+    }
+    
     /// Get a string representation
     fn __repr__(&self) -> String {
         "RBPETokenizer(dual_tokenizer=true, language_aware=true)".to_string()
